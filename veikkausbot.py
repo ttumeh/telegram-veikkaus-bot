@@ -10,7 +10,9 @@ import config
 import threading
 from telegram import Update, Bot
 from telegram.ext import MessageHandler, Updater, CallbackContext, CommandHandler
-import time
+from datetime import datetime
+
+
 
 # Lokit
 logging.basicConfig(
@@ -57,22 +59,94 @@ def alert(uudet_pelit_id, data):
                     if (str(i['id']) == str(x['rows'][0]['sportId'])):
                         laji = i['name']
                 # Luodaan peliobjekti uudesta pelistä
-                peli_info = {
-                    'nimi': x['rows'][0]['name'],
-                    'laji': laji,
-                    'alkuaika': x['openTime'],
-                    'tyyppi': x['rows'][0]['type']
-                }
+                if (x['rows'][0]['type'] == '1X2' or x['rows'][0]['type'] == 'AWAY_HANDICAP' or x['rows'][0]['type'] == 'HOME_HANDICAP'):
+                    peli_info = one_x_two_builder(x, laji)
+                if (x['rows'][0]['type'] == '12'):
+                    peli_info = one_two_builder(x, laji)
+                if (x['rows'][0]['type'] == 'BOTH_TEAMS_TO_SCORE'):
+                    peli_info = both_teams_to_score(x, laji)
                 # Lisätään uusi peli dictiin
-                uudet_pelit_dict.append(peli_info)
+                uudet_pelit_dict.append(x)
     # Lähetetään tilaajille viesti uusista peleistä
     with open('data/subscriptions.json', 'r') as subs:
         data = json.load(subs)
         for sub in data:
             for peli in uudet_pelit_dict:
                 print(peli)
-                bot.send_message(chat_id=int(sub['id']), text="Uusi peli lisätty" + "\n" + str(peli))
+                bot.send_message(chat_id=int(sub['id']), text=peli_info['msg'])
 
+
+
+def both_teams_to_score(x, laji):
+    """Luo pelitietueen molemmat joukkueet tekevät maalin -kohteelle"""
+    peli_info = {
+                    'nimi': x['rows'][0]['name'],
+                    'laji': laji,
+                    'tyyppi': x['rows'][0]['description'],
+                    'kylla': x['rows'][0]['competitors'][0]['name'],
+                    'kylla_odds': calculate_odds(x['rows'][0]['competitors'][0]['odds']['odds']),
+                    'ei': x['rows'][0]['competitors'][1]['name'],
+                    'ei_odds': calculate_odds(x['rows'][0]['competitors'][1]['odds']['odds']),
+                    'msg': ''
+                }
+    peli_info['msg'] = ("Uusi peli lisätty:" + "\n"
+                + str(peli_info['laji']) + "\n"
+                + str(peli_info['nimi'] + " " + str(peli_info['tyyppi']) + "\n")
+                + str(peli_info['kylla']) + " " + str(peli_info['kylla_odds']) + "\n"
+                + str(peli_info['ei']) + " " + str(peli_info['ei_odds']) + '\n')
+    return peli_info
+
+
+
+def one_x_two_builder(x, laji):
+    """Luo pelitietueen 1X2, AWAY- ja HOME HANDICAP kohteille"""
+    peli_info = {
+                    'nimi': x['rows'][0]['name'],
+                    'laji': laji,
+                    'tyyppi': x['rows'][0]['description'],
+                    'koti': x['rows'][0]['competitors'][0]['name'],
+                    'koti_odds': calculate_odds(x['rows'][0]['competitors'][0]['odds']['odds']),
+                    'vieras': x['rows'][0]['competitors'][1]['name'],
+                    'vieras_odds': calculate_odds(x['rows'][0]['competitors'][1]['odds']['odds']),
+                    'tasapeli_odds': calculate_odds(x['rows'][0]['competitors'][2]['odds']['odds']),
+                    'msg': ''
+                }
+    peli_info['msg'] = ("Uusi peli lisätty:" + "\n"
+                + str(peli_info['laji']) + "\n"
+                + str(peli_info['nimi'] + " " + str(peli_info['tyyppi']) + "\n")
+                + str(peli_info['koti']) + " " + str(peli_info['koti_odds']) + "\n"
+                + "Tasapeli" + " " + str(peli_info['tasapeli_odds']) + '\n'
+                + str(peli_info['vieras']) + " " + str(peli_info['vieras_odds']) + '\n')
+    return peli_info
+
+
+
+def one_two_builder(x, laji):
+    """Luo pelitietueen 12 kohteelle"""
+    peli_info = {
+                    'nimi': x['rows'][0]['name'],
+                    'laji': laji,
+                    'tyyppi': x['rows'][0]['description'],
+                    'koti': x['rows'][0]['competitors'][0]['name'],
+                    'koti_odds': calculate_odds(x['rows'][0]['competitors'][0]['odds']['odds']),
+                    'vieras': x['rows'][0]['competitors'][1]['name'],
+                    'vieras_odds': calculate_odds(x['rows'][0]['competitors'][1]['odds']['odds']),
+                    'msg': ''
+                }
+    peli_info['msg'] = ("Uusi peli lisätty:" + "\n" 
+                + str(peli_info['laji']) + "\n"
+                + str(peli_info['nimi'] + " " + str(peli_info['tyyppi']) + "\n")
+                + str(peli_info['koti']) + " " + str(peli_info['koti_odds']) + "\n"
+                + str(peli_info['vieras']) + " " + str(peli_info['vieras_odds']) + '\n')
+    return peli_info
+
+
+
+def calculate_odds(odds):
+    """Muuttaa moneyline-todennäköisyyden desimaaliksi"""
+    if (odds < 0):
+        return round((100/-odds),2)
+    else: return round(((odds/100)),2)
 
 
 
@@ -87,7 +161,7 @@ def get_games(session):
     for key in response_dict:
         peli_id = key['id']
         pelit_apu.append(peli_id)
-    if (len(set(pelit_apu).difference(set(pelit))) != 0):
+    if (set(pelit_apu).difference(set(pelit)) != set()):
         # Spämminesto botin käynnistämisen yhteydessä
         if (len(pelit) == 0):
             pelit=pelit_apu
@@ -167,5 +241,5 @@ def main() -> None:
 bot = Bot(config.BOT_TOKEN)
 s = login(config.VEIKKAUS_USERNAME,config.VEIKKAUS_PASSWORD)
 pelit = []
-set_interval(get_games, 5)
+set_interval(get_games, 30)
 main()
