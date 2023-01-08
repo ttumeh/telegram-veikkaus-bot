@@ -1,0 +1,1 @@
+Telegram bot, joka hakee Veikkauksen API:sta uudet pitkävedot.
