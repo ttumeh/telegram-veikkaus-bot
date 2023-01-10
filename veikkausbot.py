@@ -56,7 +56,7 @@ def get_games(session):
         else: 
             new_events_ids = set(pelit_apu).difference(set(pelit))
             pelit=pelit_apu
-            alerts.AlertClass.alert(new_events_ids, session)
+            alerts.alert(new_events_ids, session, bot, headers)
     else: return
 
 
@@ -78,8 +78,8 @@ def main() -> None:
     """Main-funktio alustaa botin"""
     updater = Updater(config.BOT_TOKEN)
     dispatcher = updater.dispatcher
-    dispatcher.add_handler(CommandHandler("start", subscription.SubscriptionClass.subscribe))
-    dispatcher.add_handler(CommandHandler("stop", subscription.SubscriptionClass.unsubscribe))
+    dispatcher.add_handler(CommandHandler("start", subscription.subscribe))
+    dispatcher.add_handler(CommandHandler("stop", subscription.unsubscribe))
     updater.start_polling()
     updater.idle()
 
@@ -87,7 +87,7 @@ def main() -> None:
 
 # Globals
 bot = Bot(config.BOT_TOKEN)
-s = login.LoginClass.veikkaus_login(config.VEIKKAUS_USERNAME,config.VEIKKAUS_PASSWORD)
+s = login.veikkaus_login(config.VEIKKAUS_USERNAME,config.VEIKKAUS_PASSWORD, headers)
 pelit = []
 set_interval(get_games, 60)
 main()
